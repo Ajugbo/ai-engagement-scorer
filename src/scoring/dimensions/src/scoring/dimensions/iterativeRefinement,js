@@ -1,0 +1,147 @@
+/**
+ * Iterative Refinement Scorer
+ * Measures how users improve AI outputs through follow-ups:
+ * - Precision: How specific are the refinement requests
+ * - Error Correction: How well users identify and correct mistakes
+ * - Progressive Improvement: How much outputs improve over iterations
+ */
+
+class IterativeRefinementScorer {
+  analyze(conversation) {
+    const userMessages = conversation.filter(msg => msg.role === 'user');
+    
+    // Need at least 2 messages to assess iteration
+    if (userMessages.length < 2) {
+      return {
+        score: 0,
+        breakdown: {
+          precision: 0,
+          errorCorrection: 0,
+          progressiveImprovement: 0
+        },
+        feedback: ["Not enough conversation turns to assess iterative refinement"]
+      };
+    }
+    
+    const scores = {
+      precision: this.assessPrecision(userMessages),
+      errorCorrection: this.assessErrorCorrection(conversation),
+      progressiveImprovement: this.assessProgressiveImprovement(userMessages)
+    };
+
+    const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
+
+    return {
+      score: totalScore,
+      breakdown: scores,
+      feedback: this.generateFeedback(scores)
+    };
+  }
+
+  assessPrecision(userMessages) {
+    let precisionScore = 0;
+    
+    // Skip first message (initial prompt)
+    for (let i = 1; i < userMessages.length; i++) {
+      const currentPrompt = userMessages[i].content.toLowerCase();
+      
+      // Check for specific refinement requests
+      const hasSpecificRequests = currentPrompt.includes('make it more') || 
+                                 currentPrompt.includes('add specific') ||
+                                 currentPrompt.includes('focus on') ||
+                                 currentPrompt.includes('emphasize') ||
+                                 currentPrompt.includes('change the');
+      
+      // Check for quantitative specifications
+      const hasQuantitative = currentPrompt.match(/\d+/) !== null;
+      
+      // Check for targeted improvements
+      const hasTargetedLanguage = currentPrompt.includes('specifically') || 
+                                 currentPrompt.includes('particularly') ||
+                                 currentPrompt.includes('especially');
+
+      if (hasSpecificRequests) precisionScore += 2;
+      if (hasQuantitative) precisionScore += 1;
+      if (hasTargetedLanguage) precisionScore += 1;
+    }
+    
+    return Math.min(8, precisionScore);
+  }
+
+  assessErrorCorrection(conversation) {
+    let errorScore = 0;
+    
+    conversation.forEach((msg, index) => {
+      if (msg.role === 'user' && index > 0) {
+        const text = msg.content.toLowerCase();
+        
+        // Markers that indicate error identification
+        const correctionMarkers = ['wrong', 'incorrect', 'error', 'mistake', 'not right', 'fix', 'correction'];
+        const hasCorrection = correctionMarkers.some(marker => text.includes(marker));
+        
+        // Markers that show user provides correct information
+        const providesCorrection = text.includes('should be') || 
+                                 text.includes('actually') || 
+                                 text.includes('correct version') ||
+                                 text.includes('it should');
+        
+        if (hasCorrection) errorScore += 2;
+        if (providesCorrection) errorScore += 2;
+      }
+    });
+    
+    return Math.min(8, errorScore);
+  }
+
+  assessProgressiveImprovement(userMessages) {
+    let improvementScore = 0;
+    
+    // Measure if prompts get more detailed over time
+    const firstPromptLength = userMessages[0].content.length;
+    const lastPromptLength = userMessages[userMessages.length - 1].content.length;
+    const lengthIncrease = ((lastPromptLength - firstPromptLength) / firstPromptLength) * 100;
+    
+    // Significant length increase suggests learning and refinement
+    if (lengthIncrease > 50) improvementScore += 3;
+    if (lengthIncrease > 100) improvementScore += 2;
+    
+    // Check for learning from AI responses
+    let usesAIFeedback = 0;
+    for (let i = 1; i < userMessages.length; i++) {
+      const previousAI = userMessages[i - 1];
+      if (previousAI && previousAI.role === 'assistant') {
+        const currentUserMessage = userMessages[i].content.toLowerCase();
+        
+        // Check if user references previous AI response
+        if (currentUserMessage.includes('based on') || 
+            currentUserMessage.includes('following your') ||
+            currentUserMessage.includes('as you suggested') ||
+            currentUserMessage.includes('like you said')) {
+          usesAIFeedback++;
+        }
+      }
+    }
+    
+    improvementScore += Math.min(4, usesAIFeedback * 2);
+    
+    return Math.min(9, improvementScore);
+  }
+
+  generateFeedback(scores) {
+    const feedback = [];
+    
+    if (scores.precision < 3) {
+      feedback.push("Try to be more specific in your follow-up requests - mention exactly what to change");
+    }
+    if (scores.errorCorrection < 3) {
+      feedback.push("When you spot errors, point them out clearly and provide correct information");
+    }
+    if (scores.progressiveImprovement < 3) {
+      feedback.push("Build on previous responses - reference what the AI said to create better iterations");
+    }
+    
+    return feedback.length > 0 ? feedback : ["Your iterative refinement skills are excellent! You effectively improve outputs through thoughtful follow-ups."];
+  }
+}
+
+module.exports = new IterativeRefinementScorer();
